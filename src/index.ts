@@ -53,7 +53,7 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
             .select("userState")
             .eq("roomId", roomId)
             .eq("userId", userId)
-            .single();
+            .maybeSingle();
 
         if (error) {
             elizaLogger.error("Error getting participant user state:", error);
@@ -113,12 +113,19 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
     async getMemoriesByRoomIds(params: {
         roomIds: UUID[];
         agentId?: UUID;
-        tableName: string;
+        tableName: string; // Used to filter "type" field, not the table name
         limit?: number;
     }): Promise<Memory[]> {
+        if (!params.roomIds || params.roomIds.length === 0) {
+            // Avoid querying with an empty roomIds array
+            return [];
+        }
+
+        // Query the "memories" table with filters
         let query = this.supabase
-            .from(params.tableName)
+            .from("memories") // Always querying the "memories" table
             .select("*")
+            .eq("type", params.tableName) // Filter by type = tableName
             .in("roomId", params.roomIds)
             .order("createdAt", { ascending: false });
 
@@ -140,10 +147,11 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         // map createdAt to Date
         const memories = data.map((memory) => ({
             ...memory,
-        }));
+        }))
 
         return memories as Memory[];
     }
+
 
     async getAccountById(userId: UUID): Promise<Account | null> {
         const { data, error } = await this.supabase
@@ -212,14 +220,15 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         match_count: number;
         unique: boolean;
     }): Promise<Memory[]> {
-        const result = await this.supabase.rpc("search_memories", {
+        const opts = {
             query_table_name: params.tableName,
-            query_roomId: params.roomId,
+            query_roomid: params.roomId,
             query_embedding: params.embedding,
             query_match_threshold: params.match_threshold,
             query_match_count: params.match_count,
             query_unique: params.unique,
-        });
+        };
+        const result = await this.supabase.rpc("search_memories", opts);
         if (result.error) {
             throw new Error(JSON.stringify(result.error));
         }
@@ -287,16 +296,23 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         end?: number;
     }): Promise<Memory[]> {
         const query = this.supabase
-            .from(params.tableName)
+            // .from(params.tableName) error here trying to get messages table. tableName is the filter field
+            .from("memories")
             .select("*")
             .eq("roomId", params.roomId);
 
         if (params.start) {
-            query.gte("createdAt", params.start);
+                // Convert milliseconds to seconds and create a Date object
+                const startDate = new Date(params.start);
+                query.gte("createdAt", startDate.toISOString());
+                // query.gte("createdAt", params.start);
         }
 
         if (params.end) {
-            query.lte("createdAt", params.end);
+                // Convert milliseconds to seconds and create a Date object
+                const endDate = new Date(params.end);
+                query.lte("createdAt", endDate.toISOString());
+                // query.lte("createdAt", params.end);
         }
 
         if (params.unique) {
@@ -335,7 +351,7 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
     ): Promise<Memory[]> {
         const queryParams = {
             query_table_name: params.tableName,
-            query_roomId: params.roomId,
+                query_roomid: params.roomId,
             query_embedding: embedding,
             query_match_threshold: params.match_threshold,
             query_match_count: params.count,
@@ -355,18 +371,28 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
     }
 
     async getMemoryById(memoryId: UUID): Promise<Memory | null> {
+        try {
         const { data, error } = await this.supabase
             .from("memories")
             .select("*")
             .eq("id", memoryId)
-            .single();
+                .maybeSingle(); // Use maybeSingle() instead of single()
 
-        if (error) {
-            elizaLogger.error("Error retrieving memory by ID:", error);
+            if (!data) {
+                elizaLogger.debug(`Memory ${memoryId} not found`);
             return null;
         }
 
+            // if (error && error.code !== 'PGRST116') {
+            //     elizaLogger.error(`Database error retrieving memory ${memoryId}:`, error);
+            //     throw new Error(`Database error: ${error.message}`);
+            // }
+
         return data as Memory;
+        } catch (e) {
+            elizaLogger.error(`Unexpected error retrieving memory ${memoryId}:`, e);
+            return null;
+        }
     }
 
     async getMemoriesByIds(
@@ -399,14 +425,19 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         tableName: string,
         unique = false
     ): Promise<void> {
-        const createdAt = memory.createdAt ?? Date.now();
+        // const createdAt = memory.createdAt ?? Date.now();
+        // Convert milliseconds timestamp to ISO string
+        const createdAt = memory.createdAt ?
+            new Date(memory.createdAt).toISOString() :
+            new Date().toISOString();
+
         if (unique) {
             const opts = {
                 // TODO: Add ID option, optionally
                 query_table_name: tableName,
-                query_userId: memory.userId,
+                query_userid: memory.userId,
                 query_content: memory.content.text,
-                query_roomId: memory.roomId,
+                query_roomid: memory.roomId,
                 query_embedding: memory.embedding,
                 query_createdAt: createdAt,
                 similarity_threshold: 0.95,
@@ -445,7 +476,7 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
     async removeAllMemories(roomId: UUID, tableName: string): Promise<void> {
         const result = await this.supabase.rpc("remove_memories", {
             query_table_name: tableName,
-            query_roomId: roomId,
+            query_roomid: roomId,
         });
 
         if (result.error) {
@@ -463,7 +494,7 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         }
         const query = {
             query_table_name: tableName,
-            query_roomId: roomId,
+            query_roomid: roomId,
             query_unique: !!unique,
         };
         const result = await this.supabase.rpc("count_memories", query);
@@ -482,8 +513,8 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         count?: number;
     }): Promise<Goal[]> {
         const opts = {
-            query_roomId: params.roomId,
-            query_userId: params.userId,
+            query_roomid: params.roomId,
+            query_userid: params.userId,
             only_in_progress: params.onlyInProgress,
             row_count: params.count,
         };
@@ -722,7 +753,7 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
             .select("value")
             .eq("key", params.key)
             .eq("agentId", params.agentId)
-            .single();
+            .maybeSingle();
 
         if (error) {
             elizaLogger.error("Error fetching cache:", error);
