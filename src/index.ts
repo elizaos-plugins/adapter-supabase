@@ -11,10 +11,13 @@ import {
     type Room,
     type RAGKnowledgeItem,
     elizaLogger,
+    type IAgentRuntime,
+    type Adapter,
+    type Plugin,
 } from "@elizaos/core";
 import { DatabaseAdapter } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
-export class SupabaseDatabaseAdapter extends DatabaseAdapter {
+class SupabaseDatabaseAdapter extends DatabaseAdapter {
     async getRoom(roomId: UUID): Promise<UUID | null> {
         const { data, error } = await this.supabase
             .from("rooms")
@@ -955,3 +958,40 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
         }
     }
 }
+
+const supabaseAdapter: Adapter = {
+    init: (runtime: IAgentRuntime) => {
+        const supabaseUrl = runtime.getSetting("SUPABASE_URL");
+        const supabaseAnonKey = runtime.getSetting("SUPABASE_ANON_KEY");
+
+        if (supabaseUrl && supabaseAnonKey) {
+            elizaLogger.info("Initializing Supabase connection...");
+            const db = new SupabaseDatabaseAdapter(
+                supabaseUrl,
+                supabaseAnonKey
+            );
+    
+            // Test the connection
+            db.init()
+                .then(() => {
+                    elizaLogger.success(
+                        "Successfully connected to Supabase database"
+                    );
+                })
+                .catch((error) => {
+                    elizaLogger.error("Failed to connect to Supabase:", error);
+                });
+    
+            return db;
+        } else {
+            throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY are not set");
+        }
+    },
+};
+
+const supabasePlugin: Plugin = {
+    name: "supabase",
+    description: "Supabase database adapter plugin",
+    adapters: [supabaseAdapter],
+};
+export default supabasePlugin;
