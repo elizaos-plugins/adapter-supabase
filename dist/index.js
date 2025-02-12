@@ -24,7 +24,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     return data;
   }
   async getParticipantUserState(roomId, userId) {
-    const { data, error } = await this.supabase.from("participants").select("userState").eq("roomId", roomId).eq("userId", userId).single();
+    const { data, error } = await this.supabase.from("participants").select("userState").eq("roomId", roomId).eq("userId", userId).maybeSingle();
     if (error) {
       elizaLogger.error("Error getting participant user state:", error);
       return null;
@@ -57,7 +57,10 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
   async close() {
   }
   async getMemoriesByRoomIds(params) {
-    let query = this.supabase.from(params.tableName).select("*").in("roomId", params.roomIds).order("createdAt", { ascending: false });
+    if (!params.roomIds || params.roomIds.length === 0) {
+      return [];
+    }
+    let query = this.supabase.from("memories").select("*").eq("type", params.tableName).in("roomId", params.roomIds).order("createdAt", { ascending: false });
     if (params.agentId) {
       query = query.eq("agentId", params.agentId);
     }
@@ -120,14 +123,15 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     }
   }
   async searchMemories(params) {
-    const result = await this.supabase.rpc("search_memories", {
+    const opts = {
       query_table_name: params.tableName,
-      query_roomId: params.roomId,
+      query_roomid: params.roomId,
       query_embedding: params.embedding,
       query_match_threshold: params.match_threshold,
       query_match_count: params.match_count,
       query_unique: params.unique
-    });
+    };
+    const result = await this.supabase.rpc("search_memories", opts);
     if (result.error) {
       throw new Error(JSON.stringify(result.error));
     }
@@ -158,12 +162,14 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     }
   }
   async getMemories(params) {
-    const query = this.supabase.from(params.tableName).select("*").eq("roomId", params.roomId);
+    const query = this.supabase.from("memories").select("*").eq("roomId", params.roomId);
     if (params.start) {
-      query.gte("createdAt", params.start);
+      const startDate = new Date(params.start);
+      query.gte("createdAt", startDate.toISOString());
     }
     if (params.end) {
-      query.lte("createdAt", params.end);
+      const endDate = new Date(params.end);
+      query.lte("createdAt", endDate.toISOString());
     }
     if (params.unique) {
       query.eq("unique", true);
@@ -184,7 +190,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
   async searchMemoriesByEmbedding(embedding, params) {
     const queryParams = {
       query_table_name: params.tableName,
-      query_roomId: params.roomId,
+      query_roomid: params.roomId,
       query_embedding: embedding,
       query_match_threshold: params.match_threshold,
       query_match_count: params.count,
@@ -202,12 +208,17 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     }));
   }
   async getMemoryById(memoryId) {
-    const { data, error } = await this.supabase.from("memories").select("*").eq("id", memoryId).single();
-    if (error) {
-      elizaLogger.error("Error retrieving memory by ID:", error);
+    try {
+      const { data, error } = await this.supabase.from("memories").select("*").eq("id", memoryId).maybeSingle();
+      if (!data) {
+        elizaLogger.debug(`Memory ${memoryId} not found`);
+        return null;
+      }
+      return data;
+    } catch (e) {
+      elizaLogger.error(`Unexpected error retrieving memory ${memoryId}:`, e);
       return null;
     }
-    return data;
   }
   async getMemoriesByIds(memoryIds, tableName) {
     if (memoryIds.length === 0) return [];
@@ -223,14 +234,14 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     return data;
   }
   async createMemory(memory, tableName, unique = false) {
-    const createdAt = memory.createdAt ?? Date.now();
+    const createdAt = memory.createdAt ? new Date(memory.createdAt).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
     if (unique) {
       const opts = {
         // TODO: Add ID option, optionally
         query_table_name: tableName,
-        query_userId: memory.userId,
+        query_userid: memory.userId,
         query_content: memory.content.text,
-        query_roomId: memory.roomId,
+        query_roomid: memory.roomId,
         query_embedding: memory.embedding,
         query_createdAt: createdAt,
         similarity_threshold: 0.95
@@ -260,7 +271,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
   async removeAllMemories(roomId, tableName) {
     const result = await this.supabase.rpc("remove_memories", {
       query_table_name: tableName,
-      query_roomId: roomId
+      query_roomid: roomId
     });
     if (result.error) {
       throw new Error(JSON.stringify(result.error));
@@ -272,7 +283,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     }
     const query = {
       query_table_name: tableName,
-      query_roomId: roomId,
+      query_roomid: roomId,
       query_unique: !!unique
     };
     const result = await this.supabase.rpc("count_memories", query);
@@ -283,8 +294,8 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
   }
   async getGoals(params) {
     const opts = {
-      query_roomId: params.roomId,
-      query_userId: params.userId,
+      query_roomid: params.roomId,
+      query_userid: params.userId,
       only_in_progress: params.onlyInProgress,
       row_count: params.count
     };
@@ -429,7 +440,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     return data;
   }
   async getCache(params) {
-    const { data, error } = await this.supabase.from("cache").select("value").eq("key", params.key).eq("agentId", params.agentId).single();
+    const { data, error } = await this.supabase.from("cache").select("value").eq("key", params.key).eq("agentId", params.agentId).maybeSingle();
     if (error) {
       elizaLogger.error("Error fetching cache:", error);
       return void 0;
