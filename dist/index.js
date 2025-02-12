@@ -1,4 +1,4 @@
-// src/index.ts
+// src/client.ts
 import { createClient } from "@supabase/supabase-js";
 import {
   elizaLogger
@@ -29,7 +29,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
       elizaLogger.error("Error getting participant user state:", error);
       return null;
     }
-    return data?.userState;
+    return data == null ? void 0 : data.userState;
   }
   async setParticipantUserState(roomId, userId, state) {
     const { error } = await this.supabase.from("participants").update({ userState: state }).eq("roomId", roomId).eq("userId", userId);
@@ -79,7 +79,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     if (error) {
       throw new Error(error.message);
     }
-    return data?.[0] || null;
+    return (data == null ? void 0 : data[0]) || null;
   }
   async createAccount(account) {
     const { error } = await this.supabase.from("accounts").upsert([account]);
@@ -107,10 +107,10 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
         (room) => room.participants.map((participant) => {
           const user = participant.account;
           return {
-            name: user?.name,
-            details: user?.details,
-            id: user?.id,
-            username: user?.username
+            name: user == null ? void 0 : user.name,
+            details: user == null ? void 0 : user.details,
+            id: user == null ? void 0 : user.id,
+            username: user == null ? void 0 : user.username
           };
         })
       );
@@ -385,7 +385,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
       if (roomsError) {
         throw new Error("Room creation error: " + roomsError.message);
       }
-      roomId = newRoomData?.id;
+      roomId = newRoomData == null ? void 0 : newRoomData.id;
     } else {
       roomId = allRoomData[0];
     }
@@ -434,7 +434,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
       elizaLogger.error("Error fetching cache:", error);
       return void 0;
     }
-    return data?.value;
+    return data == null ? void 0 : data.value;
   }
   async setCache(params) {
     const { error } = await this.supabase.from("cache").upsert({
@@ -525,6 +525,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     return results;
   }
   async createKnowledge(knowledge) {
+    var _a;
     try {
       const metadata = knowledge.content.metadata || {};
       const { error } = await this.supabase.from("knowledge").insert({
@@ -550,7 +551,7 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     } catch (error) {
       elizaLogger.error(`Error creating knowledge ${knowledge.id}:`, {
         error,
-        embeddingLength: knowledge.embedding?.length,
+        embeddingLength: (_a = knowledge.embedding) == null ? void 0 : _a.length,
         content: knowledge.content
       });
       throw error;
@@ -584,7 +585,38 @@ var SupabaseDatabaseAdapter = class extends DatabaseAdapter {
     }
   }
 };
+var supabaseAdapter = {
+  init: (runtime) => {
+    const supabaseUrl = runtime.getSetting("SUPABASE_URL");
+    const supabaseAnonKey = runtime.getSetting("SUPABASE_ANON_KEY");
+    if (supabaseUrl && supabaseAnonKey) {
+      elizaLogger.info("Initializing Supabase connection...");
+      const db = new SupabaseDatabaseAdapter(
+        supabaseUrl,
+        supabaseAnonKey
+      );
+      db.init().then(() => {
+        elizaLogger.success(
+          "Successfully connected to Supabase database"
+        );
+      }).catch((error) => {
+        elizaLogger.error("Failed to connect to Supabase:", error);
+      });
+      return db;
+    } else {
+      throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY are not set");
+    }
+  }
+};
+
+// src/index.ts
+var supabasePlugin = {
+  name: "supabase",
+  description: "Supabase database adapter plugin",
+  adapters: [supabaseAdapter]
+};
+var index_default = supabasePlugin;
 export {
-  SupabaseDatabaseAdapter
+  index_default as default
 };
 //# sourceMappingURL=index.js.map
