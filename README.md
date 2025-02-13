@@ -11,7 +11,7 @@ This adapter enables ElizaOS to integrate with Supabase for data persistence and
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-supabase
+npm install github:elizaos-plugins/adapter-supabase
 ```
 
 ## Configuration
