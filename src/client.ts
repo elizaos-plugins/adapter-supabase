@@ -586,10 +586,13 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
     }
 
     async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
-        const { data, error } = await this.supabase
-            .from("participants")
-            .select("roomId")
-            .in("userId", userIds);
+        const { data, error } = await this.supabase.rpc(
+            'get_room_ids_by_user_ids', { user_ids: userIds });
+
+        // const { data, error } = await this.supabase
+        //     .from("participants")
+        //     .select("roomId",{distinct:true})
+        //     .in("userId", userIds)
 
         if (error) {
             throw new Error(
@@ -597,7 +600,7 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
             );
         }
 
-        return [...new Set(data.map((row) => row.roomId as UUID))] as UUID[];
+        return [...new Set(data.map((row) => row.roomid as UUID))] as UUID[];
     }
 
     async createRoom(roomId?: UUID): Promise<UUID> {

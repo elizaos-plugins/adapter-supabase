@@ -11,6 +11,7 @@
   -- DROP TRIGGER IF EXISTS insert_into_memories ON memories;
   -- DROP FUNCTION remove_memories(text,uuid);
   -- DROP FUNCTION count_memories(text,uuid,boolean);
+  -- DROP FUNCTION check_similarity_and_insert(text,uuid,jsonb,uuid,vector,double precision,timestamp with time zone);
 
   DROP TABLE IF EXISTS relationships CASCADE;
   DROP TABLE IF EXISTS participants CASCADE;
@@ -25,6 +26,7 @@
   DROP TABLE IF EXISTS cache CASCADE;
   DROP TABLE IF EXISTS accounts CASCADE;
   DROP TABLE IF EXISTS knowledge CASCADE;
+
 
 
 -- -- Create Extensions
@@ -304,15 +306,6 @@ BEFORE INSERT ON memories_384
 FOR EACH ROW
 EXECUTE FUNCTION convert_timestamp();
 
--- CREATE OR REPLACE FUNCTION public.get_embedding_list(
---     query_table_name TEXT,
---     query_threshold INTEGER,
---     query_input TEXT,
---     query_field_name TEXT,
---     query_field_sub_name TEXT,
---     query_match_count INTEGER
--- )
-
 CREATE OR REPLACE FUNCTION "public"."get_embedding_list"(
     "query_table_name" "text", 
     "query_threshold" integer, 
@@ -388,7 +381,7 @@ $$;
 
 ALTER FUNCTION "public"."get_goals"("query_roomid" "uuid", "query_userid" "uuid", "only_in_progress" boolean, "row_count" integer) OWNER TO "postgres";
 
--- DROP FUNCTION check_similarity_and_insert(text,uuid,jsonb,uuid,vector,double precision,timestamp with time zone);
+
 
 CREATE OR REPLACE FUNCTION "public"."check_similarity_and_insert"("query_table_name" "text", "query_userid" "uuid", "query_content" "jsonb", "query_roomid" "uuid", "query_embedding" "vector", "similarity_threshold" double precision, "query_createdAt" timestamp with time zone)
 RETURNS "void"
@@ -577,5 +570,17 @@ BEGIN
 END;
 $$;
 
+
+CREATE OR REPLACE FUNCTION get_room_ids_by_user_ids(user_ids uuid[])
+RETURNS TABLE(roomId uuid) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT "roomId" 
+    FROM participants 
+    WHERE "userId" = ANY(user_ids)
+    GROUP BY "roomId"
+    HAVING COUNT(DISTINCT "userId") = array_length(user_ids, 1);
+END;
+$$ LANGUAGE plpgsql;
 
 COMMIT;
