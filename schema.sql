@@ -349,12 +349,18 @@ BEGIN
         QUERY := format('
             SELECT
                 embedding,
-                levenshtein($2, (content->>''%s'')::TEXT) AS levenshtein_score
+                levenshtein(
+                    $2,
+                    LEFT((content->>''%s'')::TEXT, 255)
+                ) AS levenshtein_score
             FROM
                 memories
             WHERE
                 type = $1 AND
-                levenshtein($2, (content->>''%s'')::TEXT) <= $3
+                levenshtein(
+                    $2,
+                    LEFT((content->>''%s'')::TEXT, 255)
+                ) <= $3
             ORDER BY
                 levenshtein_score
             LIMIT
