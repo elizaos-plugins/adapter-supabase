@@ -64,3 +64,19 @@ Once configured, the adapter will automatically handle:
 - Real-time updates for multi-user environments
 - State synchronization across different instances
 - Secure data storage and retrieval
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Submit a pull request
+
+Please ensure your code follows our coding standards and includes appropriate tests.
+
+## License
+
+MIT License - See [LICENSE](LICENSE) file for details
